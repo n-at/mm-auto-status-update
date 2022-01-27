@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-co-op/gocron"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 )
 
 const (
@@ -20,9 +22,15 @@ const (
 	StatusDoNotDisturb = "dnd"
 )
 
+type statusUpdate struct {
+	Cron   string
+	Status string
+}
+
 var (
 	mattermostUrl         string
 	mattermostAccessToken string
+	statusUpdates         []statusUpdate
 )
 
 func init() {
@@ -47,6 +55,14 @@ func init() {
 	if mattermostAccessToken == "" {
 		log.Fatalf("mattermost access token not found")
 	}
+
+	err := viper.UnmarshalKey("status-updates", &statusUpdates)
+	if err != nil {
+		log.Fatalf("unable to read status updates: %s", err)
+	}
+	if len(statusUpdates) == 0 {
+		log.Fatalf("empty status updates")
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -57,9 +73,23 @@ func main() {
 		log.Fatalf("user info failed: %s", err)
 	}
 
-	err = updateStatus(userInfo.Id, StatusAway)
+	scheduler := gocron.NewScheduler(time.UTC)
+	for _, update := range statusUpdates {
+		scheduleStatusUpdate(scheduler, userInfo.Id, update)
+	}
+	scheduler.StartBlocking()
+}
+
+func scheduleStatusUpdate(scheduler *gocron.Scheduler, userId string, update statusUpdate) {
+	_, err := scheduler.CronWithSeconds(update.Cron).Do(func() {
+		log.Infof("update status to %s", update.Status)
+		err := updateStatus(userId, update.Status)
+		if err != nil {
+			log.Errorf("change status failed: %s, %s", update, err)
+		}
+	})
 	if err != nil {
-		log.Fatalf("change status failed: %s", err)
+		log.Fatalf("unable to create cron job: %s, %s", update, err)
 	}
 }
 
@@ -77,7 +107,7 @@ type userResponse struct {
 }
 
 func userInfo() (*userResponse, error) {
-	request, _ := newRequest(http.MethodGet, "users/me", nil)
+	request, _ := newMattermostApiRequest(http.MethodGet, "users/me", nil)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return nil, err
@@ -105,7 +135,7 @@ func updateStatus(userId, newStatus string) error {
 		return err
 	}
 
-	request, _ := newRequest(http.MethodPut, "users/me/status", bytes.NewBuffer(updateRequestJson))
+	request, _ := newMattermostApiRequest(http.MethodPut, "users/me/status", bytes.NewBuffer(updateRequestJson))
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return err
@@ -119,7 +149,7 @@ func updateStatus(userId, newStatus string) error {
 	return nil
 }
 
-func newRequest(method string, apiUrlPart string, body io.Reader) (*http.Request, error) {
+func newMattermostApiRequest(method string, apiUrlPart string, body io.Reader) (*http.Request, error) {
 	apiUrl := fmt.Sprintf("%s/api/v4/%s", mattermostUrl, apiUrlPart)
 	request, err := http.NewRequest(method, apiUrl, body)
 	request.Header.Set("Content-Type", "application/json")

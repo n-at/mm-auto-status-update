@@ -1,0 +1,8 @@
+mattermost-url: "https://example.com"
+access-token: "******"
+
+status-updates:
+  - cron: "0 * * * * *"
+    status: "online"
+  - cron: "30 * * * * *"
+    status: "away"
