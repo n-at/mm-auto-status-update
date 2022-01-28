@@ -107,20 +107,13 @@ type userResponse struct {
 }
 
 func userInfo() (*userResponse, error) {
-	request, _ := newMattermostApiRequest(http.MethodGet, "users/me", nil)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	body, err := ioutil.ReadAll(response.Body)
+	response, err := mattermostApiRequest(http.MethodGet, "users/me", nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var userResponseData userResponse
-	err = json.Unmarshal(body, &userResponseData)
+	err = json.Unmarshal(response, &userResponseData)
 	if err != nil {
 		return nil, err
 	}
@@ -135,24 +128,31 @@ func updateStatus(userId, newStatus string) error {
 		return err
 	}
 
-	request, _ := newMattermostApiRequest(http.MethodPut, "users/me/status", bytes.NewBuffer(updateRequestJson))
+	_, err = mattermostApiRequest(http.MethodPut, "users/me/status", bytes.NewBuffer(updateRequestJson))
+
+	return err
+}
+
+func mattermostApiRequest(method string, apiUrlPart string, body io.Reader) ([]byte, error) {
+	apiUrl := fmt.Sprintf("%s/api/v4/%s", mattermostUrl, apiUrlPart)
+	request, _ := http.NewRequest(method, apiUrl, body)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", mattermostAccessToken))
+
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("non-ok status code received: %s", response.Status))
+		return nil, errors.New(fmt.Sprintf("%s non-ok status code received: %s", apiUrlPart, response.Status))
 	}
 
-	return nil
-}
+	responseBody, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
 
-func newMattermostApiRequest(method string, apiUrlPart string, body io.Reader) (*http.Request, error) {
-	apiUrl := fmt.Sprintf("%s/api/v4/%s", mattermostUrl, apiUrlPart)
-	request, err := http.NewRequest(method, apiUrl, body)
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", mattermostAccessToken))
-	return request, err
+	return responseBody, nil
 }
