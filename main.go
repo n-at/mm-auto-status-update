@@ -73,7 +73,7 @@ func main() {
 		log.Fatalf("user info failed: %s", err)
 	}
 
-	scheduler := gocron.NewScheduler(time.UTC)
+	scheduler := gocron.NewScheduler(time.Now().Location())
 	for _, update := range statusUpdates {
 		scheduleStatusUpdate(scheduler, userInfo.Id, update)
 	}
