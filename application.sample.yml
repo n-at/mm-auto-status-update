@@ -1,6 +1,11 @@
+#mattermost mail url
 mattermost-url: "https://example.com"
+
+#mattermost access token: https://developers.mattermost.com/integrate/admin-guide/admin-personal-access-token/
 access-token: "******"
 
+#cron - crontab value (with additional field for seconds)
+#value - new status (online, offline, away, dnd)
 status-updates:
   - cron: "0 * * * * *"
     status: "online"
